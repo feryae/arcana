@@ -6,7 +6,6 @@ use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Kingdom;
 use App\Models\Region;
 use App\Models\Ruler;
-use Illuminate\Support\Str;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\WithPagination;
@@ -211,7 +210,8 @@ new
             ->when($this->alignmentFilter, fn(Builder $q) => $q->where('alignment', $this->alignmentFilter))
             ->when($this->regionFilter, fn(Builder $q) => $q->where('region_id', $this->regionFilter))
             ->when($this->rulerFilter, fn(Builder $q) => $q->where('ruler_id', $this->rulerFilter))
-            ->whereBetween('threat', [$this->minThreat, $this->maxThreat]);
+            ->where('threat', '>=', $this->minThreat)
+            ->where('threat', '<=', $this->maxThreat);
     }
 
     protected function rules(): array

@@ -233,7 +233,8 @@ new
             ->when($this->statusFilter, fn(Builder $q) => $q->where('status', $this->statusFilter))
             ->when($this->regionFilter, fn(Builder $q) => $q->where('region_id', $this->regionFilter))
             ->when($this->kingdomFilter, fn(Builder $q) => $q->where('kingdom_id', $this->kingdomFilter))
-            ->whereBetween('sightings', [$this->minSightings, $this->maxSightings]);
+            ->where('sightings', '>=', $this->minSightings)
+            ->where('sightings', '<=', $this->maxSightings);
     }
 
     protected function rules(): array

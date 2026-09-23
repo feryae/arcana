@@ -218,7 +218,8 @@ new
             ->when($this->alignmentFilter, fn(Builder $q) => $q->where('alignment', $this->alignmentFilter))
             ->when($this->kingdomFilter, fn(Builder $q) => $q->where('kingdom_id', $this->kingdomFilter))
             ->when($this->leaderFilter, fn(Builder $q) => $q->where('leader_id', $this->leaderFilter))
-            ->whereBetween('influence', [$this->minInfluence, $this->maxInfluence]);
+            ->where('influence', '>=', $this->minInfluence)
+            ->where('influence', '<=', $this->maxInfluence);
     }
 
     protected function rules(): array

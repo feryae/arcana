@@ -173,7 +173,8 @@ new
             ->when($this->habitatFilter, fn(Builder $q) => $q->where('habitat', $this->habitatFilter))
             ->when($this->threatFilter, fn(Builder $q) => $q->where('threat', $this->threatFilter))
             ->when($this->kingdomFilter, fn(Builder $q) => $q->where('kingdom_id', $this->kingdomFilter))
-            ->whereBetween('sightings', [$this->minSightings, $this->maxSightings]);
+            ->where('sightings', '>=', $this->minSightings)
+            ->where('sightings', '<=', $this->maxSightings);
     }
 
     protected function rules(): array
