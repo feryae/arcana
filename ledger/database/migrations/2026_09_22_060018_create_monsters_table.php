@@ -11,13 +11,13 @@ return new class extends Migration {
             $table->id();
             $table->string('slug')->unique();
             $table->string('name');
-            $table->string('classification');
-            $table->string('habitat');
+            $table->string('classification')->index();
+            $table->string('habitat')->index();
             $table->foreignId('kingdom_id')->nullable()->constrained('kingdoms')->nullOnDelete();
-            $table->string('threat');
+            $table->string('threat')->index();
             $table->unsignedTinyInteger('threat_level')->default(0); // derived from threat by the model, kept as a real column so it stays cursor-paginate/orderBy compatible
-            $table->unsignedInteger('sightings')->default(0);
-            $table->string('status');
+            $table->unsignedInteger('sightings')->default(0)->index();
+            $table->string('status')->index();
             $table->text('description')->nullable();
             $table->timestamps();
         });

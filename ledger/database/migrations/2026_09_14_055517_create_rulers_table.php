@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('rulers', function (Blueprint $table) {
             $table->id();
             $table->string('slug')->unique();
-            $table->string('honorific');
+            $table->string('honorific')->index();
             $table->string('name');
             $table->text('bio')->nullable();
             $table->text('notes')->nullable();

@@ -14,10 +14,10 @@ return new class extends Migration {
             $table->string('title');
             $table->foreignId('region_id')->nullable()->constrained('regions')->nullOnDelete();
             $table->foreignId('kingdom_id')->nullable()->constrained('kingdoms')->nullOnDelete();
-            $table->string('type');
-            $table->string('level');
+            $table->string('type')->index();
+            $table->string('level')->index();
             $table->unsignedTinyInteger('level_severity')->default(0); // derived from level by the model, kept as a real column so it stays cursor-paginate/orderBy compatible
-            $table->string('status');
+            $table->string('status')->index();
             $table->unsignedInteger('sightings')->default(0);
             $table->text('description')->nullable();
             $table->timestamps();
