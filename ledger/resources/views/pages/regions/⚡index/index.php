@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Models\Region;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\Cursor;
@@ -14,9 +16,9 @@ new
     class extends Component {
 
     use WithPagination;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Region $selected = null;
 
     public string $name = '';
@@ -37,29 +39,11 @@ new
     #[Url(history: true)]
     public string $sortDirection = 'asc';
 
-    public ?string $cursor = null;
 
     public function clearFilters(): void
     {
         $this->reset(['search', 'minKingdoms', 'maxKingdoms']);
         $this->cursor = null;
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
-        $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -94,13 +78,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Region $region): void
     {
         $this->fillForm($region);
@@ -115,23 +92,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Region $region): void
     {
         $this->selected = $region;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -149,7 +114,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Region record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Region::uniqueSlug($this->name);
             Region::create($data);
             session()->flash('success', 'Region record added to the archive.');
         }
@@ -169,20 +134,6 @@ new
         $this->selected = null;
         $this->reset(['name', 'description']);
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Region::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

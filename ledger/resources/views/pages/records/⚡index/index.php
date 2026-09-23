@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Author;
 use App\Models\Record;
@@ -18,9 +20,9 @@ new
 
     use WithPagination;
     use HasSearchableRelations;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Record $selected = null;
 
     // Form fields
@@ -68,8 +70,6 @@ new
 
     #[Url(history: true)]
     public string $sortDirection = 'asc';
-
-    public ?string $cursor = null;
 
     /**
      * A record's credited author, used both to filter the list and to pick
@@ -138,23 +138,7 @@ new
     {
         $this->reset(['search', 'categoryFilter', 'eraFilter', 'importanceFilter', 'confidentialFilter']);
         $this->clearRelation('author-filter');
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
         $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -204,13 +188,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Record $record): void
     {
         $this->fillForm($record);
@@ -225,23 +202,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Record $record): void
     {
         $this->selected = $record;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -262,7 +227,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->title);
+            $data['slug'] = Record::uniqueSlug($this->title);
             Record::create($data);
             session()->flash('success', 'Record added to the archive.');
         }
@@ -295,20 +260,6 @@ new
         $this->confidential = false;
         $this->clearRelation('author-form');
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $title): string
-    {
-        $base = Str::slug($title);
-        $slug = $base;
-        $i = 1;
-
-        while (Record::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

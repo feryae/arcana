@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Kingdom;
 use App\Models\Monster;
@@ -18,9 +20,9 @@ new
 
     use WithPagination;
     use HasSearchableRelations;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Monster $selected = null;
 
     // Form fields
@@ -71,8 +73,6 @@ new
 
     #[Url(history: true)]
     public string $sortDirection = 'asc';
-
-    public ?string $cursor = null;
 
     /**
      * A monster's confirmed origin (Kingdom), used both to filter the list
@@ -141,24 +141,9 @@ new
     {
         $this->reset(['search', 'classificationFilter', 'habitatFilter', 'threatFilter', 'minSightings', 'maxSightings']);
         $this->clearRelation('kingdom-filter');
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
         $this->cursor = null;
     }
 
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
-    }
 
     /**
      * threat is a free-form label ('Low'..'Extreme'); the actual sortable
@@ -205,13 +190,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Monster $monster): void
     {
         $this->fillForm($monster);
@@ -226,23 +204,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Monster $monster): void
     {
         $this->selected = $monster;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -266,7 +232,7 @@ new
             session()->flash('success', 'Monster record updated.');
 
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Monster::uniqueSlug($this->name);
             Monster::create($data);
             session()->flash('success', 'Monster record added to the archive.');
         }
@@ -299,20 +265,6 @@ new
         $this->status = $this->statuses[0];
         $this->clearRelation('kingdom-form');
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Monster::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

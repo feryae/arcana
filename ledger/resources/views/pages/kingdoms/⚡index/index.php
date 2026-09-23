@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Kingdom;
 use App\Models\Region;
@@ -19,9 +21,9 @@ new
 
     use WithPagination;
     use HasSearchableRelations;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Kingdom $selected = null;
 
     // Form fields
@@ -72,8 +74,6 @@ new
 
     #[Url(history: true)]
     public string $sortDirection = 'asc';
-
-    public ?string $cursor = null;
 
     /**
      * The four searchable pickers this component needs. Adding a fifth
@@ -182,8 +182,6 @@ new
         $this->clearRelation('region-form');
     }
 
-    // --- Everything below is unchanged behavior, just tidied ---
-
     public function mount(): void
     {
         $this->hydrateRelationName('ruler-filter');
@@ -195,23 +193,7 @@ new
         $this->reset(['search', 'alignmentFilter', 'regionFilter', 'rulerFilter', 'minThreat', 'maxThreat']);
         $this->clearRelation('ruler-filter');
         $this->clearRelation('region-filter');
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
         $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -247,13 +229,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Kingdom $kingdom): void
     {
         $this->fillForm($kingdom);
@@ -268,23 +243,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Kingdom $kingdom): void
     {
         $this->selected = $kingdom;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -308,7 +271,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Kingdom record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Kingdom::uniqueSlug($this->name);
             Kingdom::create($data);
             session()->flash('success', 'Kingdom record added to the archive.');
         }
@@ -341,20 +304,6 @@ new
         $this->clearRelation('ruler-form');
         $this->clearRelation('region-form');
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Kingdom::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

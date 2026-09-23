@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\Cursor;
@@ -14,9 +16,9 @@ new
     class extends Component {
 
     use WithPagination;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?User $selected = null;
 
     // Form fields
@@ -38,29 +40,10 @@ new
     #[Url(history: true)]
     public string $sortDirection = 'asc';
 
-    public ?string $cursor = null;
-
     public function clearFilters(): void
     {
         $this->reset(['search', 'verifiedFilter']);
         $this->cursor = null;
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
-        $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -89,13 +72,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(User $user): void
     {
         $this->fillForm($user);
@@ -110,23 +86,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(User $user): void
     {
         $this->selected = $user;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void

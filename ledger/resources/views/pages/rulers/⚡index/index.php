@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Models\Ruler;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\Cursor;
@@ -14,9 +16,9 @@ new
     class extends Component {
 
     use WithPagination;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Ruler $selected = null;
 
     public string $honorific = 'King';
@@ -88,29 +90,10 @@ new
     #[Url(history: true)]
     public string $sortDirection = 'asc';
 
-    public ?string $cursor = null;
-
     public function clearFilters(): void
     {
         $this->reset(['search', 'honorificFilter', 'minKingdoms', 'maxKingdoms']);
         $this->cursor = null;
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
-        $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -148,13 +131,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Ruler $ruler): void
     {
         $this->fillForm($ruler);
@@ -169,23 +145,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Ruler $ruler): void
     {
         $this->selected = $ruler;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -203,7 +167,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Ruler record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Ruler::uniqueSlug($this->name);
             Ruler::create($data);
             session()->flash('success', 'Ruler record added to the archive.');
         }
@@ -226,20 +190,6 @@ new
         $this->reset(['name', 'bio', 'notes']);
         $this->honorific = 'King';
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Ruler::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

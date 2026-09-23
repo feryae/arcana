@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Models\Author;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\Cursor;
@@ -14,9 +16,9 @@ new
     class extends Component {
 
     use WithPagination;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Author $selected = null;
 
     public string $name = '';
@@ -38,29 +40,10 @@ new
     #[Url(history: true)]
     public string $sortDirection = 'asc';
 
-    public ?string $cursor = null;
-
     public function clearFilters(): void
     {
         $this->reset(['search', 'minRecords', 'maxRecords']);
         $this->cursor = null;
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
-        $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -96,13 +79,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Author $author): void
     {
         $this->fillForm($author);
@@ -117,23 +93,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Author $author): void
     {
         $this->selected = $author;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -153,7 +117,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Author record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Author::uniqueSlug($this->name);
             Author::create($data);
             session()->flash('success', 'Author record added to the archive.');
         }
@@ -174,20 +138,6 @@ new
         $this->selected = null;
         $this->reset(['name', 'bio', 'notes']);
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Author::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

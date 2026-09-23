@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Kingdom;
 use App\Models\Region;
@@ -19,9 +21,9 @@ new
 
     use WithPagination;
     use HasSearchableRelations;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?ThreatReport $selected = null;
 
     // Form fields
@@ -80,8 +82,6 @@ new
 
     #[Url(history: true)]
     public string $sortDirection = 'desc';
-
-    public ?string $cursor = null;
 
     /**
      * A report's location (Region) and the Kingdom it falls under — the
@@ -200,23 +200,7 @@ new
         $this->reset(['search', 'typeFilter', 'levelFilter', 'statusFilter', 'minSightings', 'maxSightings']);
         $this->clearRelation('region-filter');
         $this->clearRelation('kingdom-filter');
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
         $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -267,13 +251,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(ThreatReport $threatReport): void
     {
         $this->fillForm($threatReport);
@@ -288,23 +265,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(ThreatReport $threatReport): void
     {
         $this->selected = $threatReport;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -327,7 +292,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Threat report updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->title);
+            $data['slug'] = ThreatReport::uniqueSlug($this->title);
             ThreatReport::create($data);
             session()->flash('success', 'Threat report added to the archive.');
         }
@@ -362,20 +327,6 @@ new
         $this->clearRelation('region-form');
         $this->clearRelation('kingdom-form');
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $title): string
-    {
-        $base = Str::slug($title);
-        $slug = $base;
-        $i = 1;
-
-        while (ThreatReport::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()

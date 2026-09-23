@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Concerns\HasCursorPagination;
+use App\Livewire\Concerns\HasModalCrud;
 use App\Livewire\Concerns\HasSearchableRelations;
 use App\Models\Faction;
 use App\Models\Kingdom;
@@ -19,9 +21,9 @@ new
 
     use WithPagination;
     use HasSearchableRelations;
+    use HasCursorPagination;
+    use HasModalCrud;
 
-    public bool $showModal = false;
-    public string $modalMode = 'create'; // create | edit | view | delete
     public ?Faction $selected = null;
 
     // Form fields
@@ -78,8 +80,6 @@ new
 
     #[Url(history: true)]
     public string $sortDirection = 'asc';
-
-    public ?string $cursor = null;
 
     /**
      * A faction has two relations — its headquarters (Kingdom) and its
@@ -199,23 +199,7 @@ new
         $this->reset(['search', 'alignmentFilter', 'minInfluence', 'maxInfluence']);
         $this->clearRelation('kingdom-filter');
         $this->clearRelation('leader-filter');
-    }
-
-    public function sortByColumn(string $column): void
-    {
-        if ($this->sortBy === $column) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            $this->sortBy = $column;
-            $this->sortDirection = 'asc';
-        }
-
         $this->cursor = null;
-    }
-
-    public function goToCursor(?string $encoded): void
-    {
-        $this->cursor = $encoded;
     }
 
     /**
@@ -254,13 +238,6 @@ new
         ];
     }
 
-    public function openCreate(): void
-    {
-        $this->resetForm();
-        $this->modalMode = 'create';
-        $this->showModal = true;
-    }
-
     public function openView(Faction $faction): void
     {
         $this->fillForm($faction);
@@ -275,23 +252,11 @@ new
         $this->showModal = true;
     }
 
-    public function switchToEdit(): void
-    {
-        $this->modalMode = 'edit';
-    }
-
     public function openDelete(Faction $faction): void
     {
         $this->selected = $faction;
         $this->modalMode = 'delete';
         $this->showModal = true;
-    }
-
-    public function closeModal(): void
-    {
-        $this->showModal = false;
-        $this->modalMode = 'create';
-        $this->resetForm();
     }
 
     public function confirmDelete(): void
@@ -316,7 +281,7 @@ new
             $this->selected->update($data);
             session()->flash('success', 'Faction record updated.');
         } else {
-            $data['slug'] = $this->uniqueSlug($this->name);
+            $data['slug'] = Faction::uniqueSlug($this->name);
             Faction::create($data);
             session()->flash('success', 'Faction record added to the archive.');
         }
@@ -353,20 +318,6 @@ new
         $this->clearRelation('kingdom-form');
         $this->clearRelation('leader-form');
         $this->resetErrorBag();
-    }
-
-    protected function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $i = 1;
-
-        while (Faction::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
-            $i++;
-        }
-
-        return $slug;
     }
 
     public function render()
