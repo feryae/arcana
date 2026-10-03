@@ -1,17 +1,30 @@
 <?php
 
-use Livewire\Component;
+// pos/⚡index/index.php
 
+use Livewire\Component;
+use Livewire\Attributes\Url;
+
+use App\Actions\AddItemToOrder;
+use App\Models\DiningHall;
 use App\Models\DiningTable;
+use App\Models\FloorElement;
 use App\Models\MenuCategory;
 use App\Models\MenuItem;
+use App\Models\ModifierOption;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 
 new class extends Component {
+    /*
+     * Kept in sync with the ?table= query string, so the picker,
+     * deep links from the floor plan, and page refreshes all agree.
+     */
+    #[Url(as: 'table', except: null)]
     public ?int $diningTableId = null;
 
     public string $search = '';
@@ -21,6 +34,39 @@ new class extends Component {
     public int $guestCount = 4;
 
     public string $paymentMethod = 'cash';
+
+    /*
+    |--------------------------------------------------------------------------
+    | Table picker
+    |--------------------------------------------------------------------------
+    */
+
+    public bool $showTablePicker = false;
+
+    public ?int $pickerHallId = null;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Modifier picker (dish customization)
+    |--------------------------------------------------------------------------
+    */
+
+    public ?int $pickingItemId = null;
+
+    public int $pickQuantity = 1;
+
+    /** Keyed by modifier group id. single: '12', multiple: ['3', '5'] */
+    public array $pickSelected = [];
+
+    public string $pickNotes = '';
+
+    /*
+    |--------------------------------------------------------------------------
+    | Messages
+    |--------------------------------------------------------------------------
+    */
+
+    public ?string $notice = null;
 
     /*
     |--------------------------------------------------------------------------
@@ -40,41 +86,23 @@ new class extends Component {
 
     public function mount(): void
     {
-        $this->diningTableId = request()->integer('table');
-
-        if (!$this->diningTableId) {
-            return;
-        }
-
-        $openOrder = Order::query()
-            ->where('dining_table_id', $this->diningTableId)
-            ->whereIn('status', [
-                'open',
-                'sent',
-                'preparing',
-                'served',
-            ])
-            ->latest()
-            ->first();
-
-        if ($openOrder) {
-            $this->guestCount = $openOrder->guest_count;
-        }
+        $this->syncGuestCount();
     }
 
     public function render()
     {
+        // Only dishes that are switched on AND have stock for at least one serving.
         $categories = MenuCategory::query()
             ->where('is_active', true)
             ->withCount([
-                'items' => fn($query) => $query->where('is_available', true),
+                'items' => fn($query) => $query->orderable(),
             ])
             ->orderBy('sort_order')
             ->get();
 
         $menuItems = MenuItem::query()
-            ->with('category')
-            ->where('is_available', true)
+            ->orderable()
+            ->with(['category', 'ingredients', 'modifierGroups'])
             ->when(
                 $this->activeCategory !== 'All',
                 fn($query) => $query->whereHas(
@@ -99,14 +127,110 @@ new class extends Component {
             $order->load([
                 'diningTable',
                 'items.menuItem.category',
+                'items.modifiers',
             ]);
+        }
+
+        // Dish being customized (if the modal is open).
+        $picking = $this->pickingItemId
+            ? MenuItem::with(['modifierGroups.options', 'ingredients'])->find($this->pickingItemId)
+            : null;
+
+        $pickUnitPrice = $picking
+            ? round(
+                (float) $picking->price
+                + (float) ModifierOption::whereIn('id', $this->pickedOptionIds())->sum('price_delta'),
+                2
+            )
+            : 0;
+
+        // Only query the floor plan while the picker is open.
+        $halls = collect();
+        $pickerTables = collect();
+        $pickerElements = collect();
+
+        if ($this->showTablePicker) {
+            $halls = DiningHall::query()->orderBy('id')->get();
+
+            $pickerTables = DiningTable::query()
+                ->where('dining_hall_id', $this->pickerHallId)
+                ->orderBy('name')
+                ->get();
+
+            $pickerElements = FloorElement::query()
+                ->where('dining_hall_id', $this->pickerHallId)
+                ->get();
         }
 
         return $this->view([
             'categories' => $categories,
             'menuItems' => $menuItems,
             'order' => $order,
+            'picking' => $picking,
+            'pickUnitPrice' => $pickUnitPrice,
+            'halls' => $halls,
+            'pickerTables' => $pickerTables,
+            'pickerElements' => $pickerElements,
         ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Table selection
+    |--------------------------------------------------------------------------
+    */
+
+    public function openTablePicker(): void
+    {
+        $this->pickerHallId = $this->hallForCurrentTable()
+            ?? session('current_hall_id')
+            ?? DiningHall::query()->orderBy('id')->value('id');
+
+        $this->showTablePicker = true;
+    }
+
+    public function closeTablePicker(): void
+    {
+        $this->showTablePicker = false;
+    }
+
+    /**
+     * Runs when the floor-table-picker does
+     * wire:click="$set('diningTableId', id)".
+     */
+    public function updatedDiningTableId($value): void
+    {
+        if ($value && !DiningTable::whereKey($value)->exists()) {
+            $this->diningTableId = null;
+
+            return;
+        }
+
+        $this->showTablePicker = false;
+
+        $this->closePicker();
+
+        $this->syncGuestCount();
+    }
+
+    protected function hallForCurrentTable(): ?int
+    {
+        if (!$this->diningTableId) {
+            return null;
+        }
+
+        return DiningTable::whereKey($this->diningTableId)->value('dining_hall_id');
+    }
+
+    /**
+     * Pull the guest count from the table's active order,
+     * or fall back to the default for a fresh table.
+     */
+    protected function syncGuestCount(): void
+    {
+        $order = $this->currentOrder();
+
+        $this->guestCount = $order?->guest_count ?? 4;
     }
 
     /*
@@ -187,40 +311,120 @@ new class extends Component {
     |--------------------------------------------------------------------------
     */
 
+    /**
+     * Tile tap. Dishes with modifiers open the customization modal;
+     * everything else is added straight away.
+     */
     public function addToOrder(int $menuItemId): void
     {
-        $menuItem = MenuItem::query()
-            ->where('is_available', true)
-            ->findOrFail($menuItemId);
+        if (!$this->diningTableId) {
+            return;
+        }
 
-        DB::transaction(function () use ($menuItem) {
-            $order = $this->getOrCreateOrder();
+        $menuItem = MenuItem::orderable()
+            ->with('modifierGroups')
+            ->find($menuItemId);
 
-            $item = OrderItem::query()
-                ->where('order_id', $order->id)
-                ->where('menu_item_id', $menuItem->id)
-                ->first();
+        if (!$menuItem) {
+            $this->notice = 'That dish is no longer available.';
 
-            if ($item instanceof OrderItem) {
-                $newQuantity = $item->quantity + 1;
+            return;
+        }
 
-                $item->update([
-                    'quantity' => $newQuantity,
-                    'subtotal' => $newQuantity * (float) $item->unit_price,
-                ]);
-            } else {
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'menu_item_id' => $menuItem->id,
-                    'quantity' => 1,
-                    'unit_price' => $menuItem->price,
-                    'subtotal' => $menuItem->price,
-                ]);
-            }
+        if ($menuItem->modifierGroups->isNotEmpty()) {
+            $this->openPicker($menuItem);
 
-            $this->recalculateOrder($order);
-        });
+            return;
+        }
+
+        $this->addLine($menuItem->id, 1, [], null);
     }
+
+    /**
+     * Validates (stock, modifier rules) and adds the line, then recalculates.
+     * If validation fails nothing is written, not even the new order.
+     */
+    protected function addLine(int $menuItemId, int $quantity, array $optionIds, ?string $notes): bool
+    {
+        try {
+            DB::transaction(function () use ($menuItemId, $quantity, $optionIds, $notes) {
+                $order = $this->getOrCreateOrder();
+
+                app(AddItemToOrder::class)->handle(
+                    $order,
+                    MenuItem::findOrFail($menuItemId),
+                    $quantity,
+                    $optionIds,
+                    $notes,
+                );
+
+                $this->recalculateOrder($order);
+            });
+        } catch (ValidationException $e) {
+            $this->notice = collect($e->errors())->flatten()->first();
+
+            return false;
+        }
+
+        $this->notice = null;
+
+        return true;
+    }
+
+    /* ---------- Modifier picker ---------- */
+
+    protected function openPicker(MenuItem $menuItem): void
+    {
+        $this->reset(['pickQuantity', 'pickSelected', 'pickNotes']);
+
+        foreach ($menuItem->modifierGroups as $group) {
+            $this->pickSelected[$group->id] = $group->type === 'multiple' ? [] : '';
+        }
+
+        $this->notice = null;
+        $this->pickingItemId = $menuItem->id;
+    }
+
+    public function confirmPick(): void
+    {
+        if (!$this->pickingItemId) {
+            return;
+        }
+
+        $added = $this->addLine(
+            $this->pickingItemId,
+            $this->pickQuantity,
+            $this->pickedOptionIds(),
+            $this->pickNotes ?: null,
+        );
+
+        if ($added) {
+            $this->closePicker();
+        }
+    }
+
+    public function closePicker(): void
+    {
+        $this->reset(['pickingItemId', 'pickQuantity', 'pickSelected', 'pickNotes']);
+    }
+
+    /** @return array<int> */
+    protected function pickedOptionIds(): array
+    {
+        return collect($this->pickSelected)
+            ->flatten()
+            ->filter(fn($id) => $id !== '' && $id !== null)
+            ->map(fn($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    public function dismissNotice(): void
+    {
+        $this->notice = null;
+    }
+
+    /* ---------- Quantities ---------- */
 
     public function increaseQuantity(int $orderItemId): void
     {
@@ -231,8 +435,15 @@ new class extends Component {
         }
 
         $item = OrderItem::query()
+            ->with('menuItem.ingredients')
             ->where('order_id', $order->id)
             ->findOrFail($orderItemId);
+
+        if (!$this->canServeMore($order, $item->menuItem)) {
+            $this->notice = "No more {$item->menuItem->name} in stock.";
+
+            return;
+        }
 
         $newQuantity = $item->quantity + 1;
 
@@ -284,6 +495,25 @@ new class extends Component {
             ->delete();
 
         $this->recalculateOrder($order);
+    }
+
+    /**
+     * Stock is deducted when the order is paid, so compare the servings left
+     * with everything of this dish already on the order (across all its lines).
+     */
+    protected function canServeMore(Order $order, MenuItem $menuItem): bool
+    {
+        $servingsLeft = $menuItem->servings_left;
+
+        if ($servingsLeft === null) {
+            return true;
+        }
+
+        $onOrder = (int) $order->items()
+            ->where('menu_item_id', $menuItem->id)
+            ->sum('quantity');
+
+        return $servingsLeft >= $onOrder + 1;
     }
 
     public function clearOrder(): void
@@ -415,6 +645,8 @@ new class extends Component {
 
         DB::transaction(function () use ($order) {
             $this->recalculateOrder($order);
+
+            app(\App\Actions\DeductIngredientStock::class)->handle($order);
 
             $order->refresh();
 

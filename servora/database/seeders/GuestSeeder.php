@@ -8,23 +8,12 @@ use App\Models\Guest;
 use App\Models\Reservation;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
+use App\Models\MenuItem;
 
 class GuestSeeder extends Seeder
 {
     // Adjust to whichever case your "Wrapped" lane uses.
     private const FINISHED = 'Completed';
-
-    private array $dishes = [
-        'Dragonfire Roast',
-        'Moonroot Stew',
-        'Herb Garden Tart',
-        'Dwarven Black Ale',
-        'Elderflower Tea',
-        'Honeyed Boar Ribs',
-        'Glowcap Risotto',
-        'Ale Flight',
-    ];
-
     private array $tags = [
         'Loves candlelit tables',
         'Always tips the bard',
@@ -36,6 +25,14 @@ class GuestSeeder extends Seeder
 
     public function run(): void
     {
+
+        $menuItemIds = MenuItem::pluck('id');
+        if ($menuItemIds->isEmpty()) {
+            $this->command?->warn('No menu items found — seeding guests without a favorite dish.');
+        }
+
+
+
         $names = [
             'Sir Aldric',
             'Mira Vane',
@@ -96,7 +93,9 @@ class GuestSeeder extends Seeder
                 'dietary' => $this->dietary(),
                 'seating_preference' => fake()->randomElement(array_keys(Guest::SEATING)),
                 'dining_style' => fake()->randomElement(array_keys(Guest::STYLES)),
-                'favorite_item' => fake()->randomElement($this->dishes),
+                'favorite_menu_item_id' => $menuItemIds->isNotEmpty() && fake()->boolean(85)
+                    ? $menuItemIds->random()
+                    : null,
                 'loyalty_points' => $visits * fake()->numberBetween(55, 95),
                 'created_at' => now()->subDays(fake()->numberBetween(1, 200)),
             ]);

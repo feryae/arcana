@@ -1,6 +1,7 @@
 <?php
-
+// {{-- guests/⚡index/index.php --}}
 use App\Models\Guest;
+use App\Models\MenuItem;
 use App\Models\Reservation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -12,7 +13,7 @@ use Livewire\WithPagination;
 new class extends Component {
     use WithPagination;
 
-    public const VIEWS = ['All Guests', 'Profiles', 'Visit History', 'Preferences', 'Loyalty'];
+    public const VIEWS = ['All Guests', 'Visit History', 'Preferences', 'Loyalty'];
 
     #[Url(as: 'view')]
     public string $view = 'All Guests';
@@ -29,6 +30,7 @@ new class extends Component {
     #[Url]
     public string $sort = 'recent';
 
+    #[Url(as: 'guest')]
     public ?int $selectedGuestId = null;
 
     public bool $showForm = false;
@@ -44,7 +46,11 @@ new class extends Component {
     public array $dietary = [];
     public string $seating_preference = '';
     public string $dining_style = '';
-    public string $favorite_item = '';
+    public string $favorite_menu_item_id = '';
+
+    #[Url(as: 'dish')]
+    public ?int $favorite = null;
+
     public int $loyalty_points = 0;
 
     /* ------------------------------------------------------------------ */
@@ -55,32 +61,32 @@ new class extends Component {
     {
         if (in_array($view, self::VIEWS, true)) {
             $this->view = $view;
-            $this->resetPage();
+            $this->resetPage('cursor');
         }
     }
 
     public function updatedSearch(): void
     {
-        $this->resetPage();
+        $this->resetPage('cursor');
     }
     public function updatedTier(): void
     {
-        $this->resetPage();
+        $this->resetPage('cursor');
     }
     public function updatedDiet(): void
     {
-        $this->resetPage();
+        $this->resetPage('cursor');
     }
     public function updatedSort(): void
     {
-        $this->resetPage();
+        $this->resetPage('cursor');
     }
 
     public function clearFilters(): void
     {
-        $this->reset('search', 'tier', 'diet');
+        $this->reset('search', 'tier', 'diet', 'favorite');
         $this->sort = 'recent';
-        $this->resetPage();
+        $this->resetPage('cursor');
     }
 
     public function selectGuest(int $id): void
@@ -119,7 +125,7 @@ new class extends Component {
         $this->dietary = $guest->dietary ?? [];
         $this->seating_preference = (string) $guest->seating_preference;
         $this->dining_style = (string) $guest->dining_style;
-        $this->favorite_item = (string) $guest->favorite_item;
+        $this->favorite_menu_item_id = (string) $guest->favorite_menu_item_id;
         $this->loyalty_points = $guest->loyalty_points;
         $this->showForm = true;
     }
@@ -142,11 +148,11 @@ new class extends Component {
             'dietary.*' => 'in:' . implode(',', array_keys(Guest::DIETARY)),
             'seating_preference' => 'nullable|in:' . implode(',', array_keys(Guest::SEATING)),
             'dining_style' => 'nullable|in:' . implode(',', array_keys(Guest::STYLES)),
-            'favorite_item' => 'nullable|string|max:120',
+            'favorite_menu_item_id' => 'nullable|exists:menu_items,id',
             'loyalty_points' => 'required|integer|min:0|max:100000',
         ]);
 
-        foreach (['phone', 'email', 'notes', 'birthday', 'seating_preference', 'dining_style', 'favorite_item'] as $k) {
+        foreach (['phone', 'email', 'notes', 'birthday', 'seating_preference', 'dining_style', 'favorite_menu_item_id'] as $k) {
             $data[$k] = $data[$k] === '' ? null : $data[$k];
         }
         $data['dietary'] = $data['dietary'] ?: null;
@@ -156,6 +162,19 @@ new class extends Component {
         $this->closeForm();
         $this->selectedGuestId = $guest->id;
         unset($this->stats, $this->selectedGuest);
+    }
+
+
+    public function updatedFavorite(): void
+    {
+        $this->resetPage();
+    }
+
+    public function filterByFavorite(int $id): void
+    {
+        $this->reset('search', 'tier', 'diet');
+        $this->favorite = $id;
+        $this->setView('All Guests');
     }
 
     public function adjustPoints(int $id, int $delta): void
@@ -219,7 +238,7 @@ new class extends Component {
             'dietary',
             'seating_preference',
             'dining_style',
-            'favorite_item',
+            'favorite_menu_item_id',
             'loyalty_points',
         );
         $this->resetValidation();
@@ -235,6 +254,7 @@ new class extends Component {
         $seated = fn($q) => $q->whereNotNull('seated_at');
 
         return Guest::query()
+            ->with('favoriteMenuItem')
             ->withCount(['reservations as visits_count' => $seated])
             ->withMax(['reservations as last_visit_at' => $seated], 'seated_at')
             ->withAvg(['reservations as avg_party' => $seated], 'party_size')
@@ -244,8 +264,9 @@ new class extends Component {
                     ->where('name', 'like', $term)
                     ->orWhere('email', 'like', $term)
                     ->orWhere('phone', 'like', $term)
-                    ->orWhere('favorite_item', 'like', $term));
+                    ->orWhereHas('favoriteMenuItem', fn($m) => $m->where('name', 'like', $term)));
             })
+            ->when($this->favorite, fn(Builder $q) => $q->where('favorite_menu_item_id', $this->favorite))
             ->when($this->tier !== '', fn(Builder $q) => match ($this->tier) {
                 'Gold' => $q->where('loyalty_points', '>=', Guest::GOLD_AT),
                 'Silver' => $q->whereBetween('loyalty_points', [Guest::SILVER_AT, Guest::GOLD_AT - 1]),
@@ -257,14 +278,24 @@ new class extends Component {
             ->when($this->sort === 'points', fn($q) => $q->orderByDesc('loyalty_points'))
             ->when($this->sort === 'name', fn($q) => $q->orderBy('name'))
             ->when($this->sort === 'recent', fn($q) => $q->orderByDesc('last_visit_at'))
-            ->orderBy('name');
+            ->orderBy('name')
+            ->orderBy('id');
+    }
+
+
+    public function mount(): void
+    {
+        if (!in_array($this->view, self::VIEWS, true)) {
+            $this->view = 'All Guests';
+        }
     }
 
     #[Computed]
     public function guests()
     {
-        return $this->baseQuery()->paginate(12);
+        return $this->baseQuery()->cursorPaginate(12);
     }
+
 
     #[Computed]
     public function profiles(): Collection
@@ -290,6 +321,7 @@ new class extends Component {
             ->withCount(['reservations as visits_count' => fn($q) => $q->whereNotNull('seated_at')])
             ->withMax(['reservations as last_visit_at' => fn($q) => $q->whereNotNull('seated_at')], 'seated_at')
             ->with(['reservations' => fn($q) => $q->with('table')->whereNotNull('seated_at')->latest('seated_at')->limit(5)])
+            ->with('favoriteMenuItem')
             ->find($this->selectedGuestId);
     }
 
@@ -314,7 +346,7 @@ new class extends Component {
     #[Computed]
     public function visits(): Collection
     {
-        return Reservation::with(['guest', 'table'])
+        return Reservation::with(['guest.favoriteMenuItem', 'table'])
             ->whereNotNull('seated_at')
             ->latest('seated_at')
             ->limit(12)
@@ -353,7 +385,7 @@ new class extends Component {
     #[Computed]
     public function preferences(): array
     {
-        $guests = Guest::get(['seating_preference', 'dining_style', 'favorite_item', 'dietary']);
+        $guests = Guest::get(['seating_preference', 'dining_style', 'dietary']);
 
         $ratio = function (array $labels, string $col) use ($guests) {
             $counts = $guests->pluck($col)->filter()->countBy();
@@ -371,8 +403,15 @@ new class extends Component {
         return [
             'seating' => $ratio(Guest::SEATING, 'seating_preference'),
             'styles' => $ratio(Guest::STYLES, 'dining_style'),
-            'diet' => collect(Guest::DIETARY)->map(fn($l, $k) => ['label' => $l, 'count' => $diet[$k] ?? 0])->values(),
-            'favorites' => $guests->pluck('favorite_item')->filter()->countBy()->sortDesc()->take(5),
+            'diet' => collect(Guest::DIETARY)
+                ->map(fn($l, $k) => ['label' => $l, 'count' => $diet[$k] ?? 0])
+                ->values(),
+            'favorites' => MenuItem::query()
+                ->withCount('favoritedBy as guests_count')
+                ->has('favoritedBy')
+                ->orderByDesc('guests_count')
+                ->limit(5)
+                ->get(),
         ];
     }
 
@@ -382,10 +421,27 @@ new class extends Component {
         // Highest progress toward next reward first.
         return Guest::query()
             ->withCount(['reservations as visits_count' => fn($q) => $q->whereNotNull('seated_at')])
+            ->with('favoriteMenuItem')
             ->where('loyalty_points', '>', 0)
             ->get()
             ->sortByDesc('tier_progress')
             ->take(8)
             ->values();
     }
+
+    #[Computed]
+    public function menuItems(): Collection
+    {
+        return MenuItem::available()->with('category')->orderBy('sort_order')->get()
+            ->groupBy(fn($m) => $m->category?->name ?? 'Other');
+    }
+
+    #[Computed]
+    public function favoriteFilter(): ?MenuItem
+    {
+        return $this->favorite ? MenuItem::find($this->favorite) : null;
+    }
+
+
+
 };

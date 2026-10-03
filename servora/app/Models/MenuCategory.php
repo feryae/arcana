@@ -22,13 +22,13 @@ class MenuCategory extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(MenuItem::class);
+        return $this->hasMany(MenuItem::class)->orderBy('sort_order');
     }
-
     public function availableItems(): HasMany
     {
         return $this->hasMany(MenuItem::class)
             ->where('is_available', true)
             ->orderBy('sort_order');
     }
+
 }

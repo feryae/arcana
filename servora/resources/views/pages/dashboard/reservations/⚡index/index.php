@@ -117,6 +117,10 @@ new class extends Component {
             $this->openNewReservationModal(false);
             $this->newTableId = $this->prefillTableId;
         }
+
+        if (!in_array($this->view, ['Reservations', 'Waitlist'], true)) {
+            $this->view = 'Reservations';
+        }
     }
 
     public function setView(string $view): void

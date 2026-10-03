@@ -19,7 +19,7 @@ return new class extends Migration {
             $table->json('dietary')->nullable();            // ['vegetarian', 'nut_allergy', ...]
             $table->string('seating_preference')->nullable(); // fireplace|window|quiet_corner|bar
             $table->string('dining_style')->nullable(); // quiet|celebrations|family|business|romantic|solo
-            $table->string('favorite_item')->nullable();
+            $table->foreignId('favorite_menu_item_id')->nullable()->constrained('menu_items')->nullOnDelete();
             $table->index('loyalty_points');
 
             $table->timestamps();

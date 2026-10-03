@@ -12,8 +12,9 @@
         <span x-text="message"></span>
     </div>
 
+
     @php
-        $crumb = ['Reservations' => 'Board', 'Waitlist' => 'Waitlist', 'Guests' => 'Guests'][$view] ?? $view;
+        $crumb = ['Reservations' => 'Board', 'Waitlist' => 'Waitlist'][$view] ?? $view;
     @endphp
 
     {{-- Page header --}}
@@ -128,17 +129,15 @@
     <div class="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
         <div class="inline-flex self-start rounded-full bg-[#F0F3EF] p-1">
-            @foreach (['Reservations', 'Waitlist', 'Guests'] as $item)
+            @foreach (['Reservations', 'Waitlist'] as $item)
                 <button wire:click="setView('{{ $item }}')" type="button"
                     class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition
                             {{ $view === $item ? 'bg-white text-[#183524] shadow-sm' : 'text-[#718076] hover:text-[#294936]' }}">
 
                     @if ($item === 'Reservations')
                         <x-tabler-layout-columns class="h-4 w-4" />
-                    @elseif ($item === 'Waitlist')
-                        <x-tabler-hourglass class="h-4 w-4" />
                     @else
-                        <x-tabler-users class="h-4 w-4" />
+                        <x-tabler-hourglass class="h-4 w-4" />
                     @endif
 
                     {{ $item }}
@@ -432,7 +431,10 @@
                                     </div>
 
                                     <div class="min-w-0 flex-1">
-                                        <h4 class="truncate text-sm font-bold text-[#183524]">{{ $reservation->guest->name }}</h4>
+                                        <a href="/dashboard/guests?guest={{ $reservation->guest_id }}" wire:navigate
+                                            class="block truncate text-sm font-bold text-[#183524] hover:text-[#5E8067] hover:underline">
+                                            {{ $reservation->guest->name }}
+                                        </a>
                                         <p class="mt-0.5 flex items-center gap-1 text-xs text-[#718076]">
                                             <x-tabler-clock class="h-3.5 w-3.5" />
                                             {{ $reservation->reserved_for->format('H:i') }}–{{ $reservation->endsAt()->format('H:i') }}
